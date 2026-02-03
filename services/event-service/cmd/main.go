@@ -11,14 +11,27 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	httpSwagger "github.com/swaggo/http-swagger"
 
 	"event-service/internal/app"
 	"event-service/internal/config"
 	"event-service/internal/handler"
 	"event-service/internal/repository"
 	"event-service/internal/service"
+
+	_ "github.com/swaggo/http-swagger"
 )
 
+// @title           Event Service API
+// @version         1.0
+// @description     Event service for Iticket platform
+// @termsOfService  http://example.com/terms/
+
+// @contact.name   Backend Team
+// @contact.email  backend@iticket.io
+
+// @host      localhost:8081
+// @BasePath  /api/v1
 func main() {
 
 	logger := slog.New(
@@ -94,6 +107,8 @@ func setupRouter(eventHandler *handler.EventHandler,
 	r.Use(handler.RequestIDMiddleware)
 	r.Use(handler.RecoveryMiddleware)
 	r.Use(handler.LoggingMiddleware)
+
+	r.Get("/swagger/*", httpSwagger.WrapHandler)
 
 	// healthcheck
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {

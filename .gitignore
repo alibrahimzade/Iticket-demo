@@ -1,0 +1,16 @@
+# Go
+/bin/
+/vendor/
+
+# IDEs
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Test artifacts
+coverage.out

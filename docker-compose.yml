@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: iticket-postgres
+    environment:
+      POSTGRES_DB: iticket
+      POSTGRES_USER: iticket
+      POSTGRES_PASSWORD: iticket
+    ports:
+      - "5432:5432"
+    volumes:
+      - iticket_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iticket -d iticket"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  event-service:
+    build:
+      context: ./services/event-service
+      dockerfile: Dockerfile
+    container_name: event-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: "8081"
+      DATABASE_URL: "postgres://iticket:iticket@postgres:5432/iticket?sslmode=disable"
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8081/ready" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  iticket_pg:
