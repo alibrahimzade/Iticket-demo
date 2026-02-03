@@ -1,27 +1,115 @@
 package main
 
 import (
-	"event-service/internal/handler"
-	"event-service/internal/service"
+	"context"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"event-service/internal/app"
+	"event-service/internal/config"
+	"event-service/internal/handler"
+	"event-service/internal/repository"
+	"event-service/internal/service"
 )
 
 func main() {
+
+	logger := slog.New(
+		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+		}),
+	)
+	slog.SetDefault(logger)
+
+	// 1️⃣ Load config
+	cfg := config.Load()
+
+	if cfg.DBURL == "" {
+		log.Fatal("DATABASE_URL is required")
+	}
+
+	// 2️⃣ Initialize Postgres
+	db, err := repository.NewPostgresDB(cfg.DBURL)
+	if err != nil {
+		log.Fatalf("failed to connect to postgres: %v", err)
+	}
+	defer func() {
+		slog.Info("closing database connection")
+		if err := db.Close(); err != nil {
+			slog.Error("failed to close database", "error", err)
+		}
+	}()
+
+	// 3️⃣ Build dependencies
+	eventRepo := repository.NewPostgresEventRepository(db)
+	eventService := service.NewEventService(eventRepo)
+	eventHandler := handler.NewEventHandler(eventService)
+	readinessHandler := handler.NewReadinessHandler(db)
+
+	// 4️⃣ Setup router
+	router := setupRouter(eventHandler, readinessHandler)
+
+	log.Printf("Starting server on address = [%q]", ":"+cfg.Port)
+
+	server := &http.Server{
+		Addr:    ":" + cfg.Port, // MUST start with colon
+		Handler: router,
+	}
+
+	application := app.New(server)
+	application.Run()
+
+	slog.Info("Event service started", "port", cfg.Port)
+
+	// 6️⃣ Graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+
+	slog.Info("shutdown signal received")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := application.Shutdown(ctx); err != nil {
+		log.Fatalf("graceful shutdown failed: %v", err)
+	}
+
+	log.Println("Event Service stopped")
+}
+
+func setupRouter(eventHandler *handler.EventHandler,
+	readinessHandler *handler.ReadinessHandler) http.Handler {
+
 	r := chi.NewRouter()
 
-	eventService := service.NewEventService()
-	eventHandler := handler.NewEventHandler(eventService)
+	// middleware
+	r.Use(handler.RequestIDMiddleware)
+	r.Use(handler.RecoveryMiddleware)
+	r.Use(handler.LoggingMiddleware)
 
+	// healthcheck
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
-	r.Get("/events", eventHandler.GetEvents)
+	r.Get("/ready", readinessHandler.Ready)
 
-	log.Println("Event Service started on :8081")
-	log.Fatal(http.ListenAndServe(":8081", r))
+	// api
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/events", eventHandler.GetEvents)
+		r.Post("/events", eventHandler.CreateEvent)
+		r.Put("/events/{id}", eventHandler.UpdateEvent)
+		r.Delete("/events/{id}", eventHandler.DeleteEvent)
+	})
+
+	return r
 }
