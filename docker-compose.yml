@@ -10,6 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - iticket_pg:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U iticket -d iticket"]
       interval: 5s
@@ -31,6 +32,26 @@ services:
       - "8081:8081"
     healthcheck:
       test: [ "CMD", "wget", "-qO-", "http://localhost:8081/ready" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  ticket-service:
+    build:
+      context: ./services/ticket-service
+      dockerfile: Dockerfile
+    container_name: ticket-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: "8082"
+      DATABASE_URL: "postgres://iticket:iticket@postgres:5432/iticket_tickets?sslmode=disable"
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8082/ready" ]
       interval: 10s
       timeout: 3s
       retries: 3

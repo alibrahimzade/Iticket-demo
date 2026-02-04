@@ -13,11 +13,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	httpSwagger "github.com/swaggo/http-swagger"
 
-	"event-service/internal/app"
-	"event-service/internal/config"
-	"event-service/internal/handler"
-	"event-service/internal/repository"
-	"event-service/internal/service"
+	"ticket-service/internal/app"
+	"ticket-service/internal/config"
+	"ticket-service/internal/handler"
+	"ticket-service/internal/repository"
+	"ticket-service/internal/service"
 )
 
 // @title           Event Service API
