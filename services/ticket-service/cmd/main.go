@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	httpSwagger "github.com/swaggo/http-swagger"
 
 	"ticket-service/internal/app"
 	"ticket-service/internal/config"
@@ -20,18 +19,19 @@ import (
 	"ticket-service/internal/service"
 )
 
-// @title           Event Service API
+// @title           Ticket Service API
 // @version         1.0
-// @description     Event service for Iticket platform
+// @description     Ticket service for Iticket platform
 // @termsOfService  http://example.com/terms/
 
 // @contact.name   Backend Team
 // @contact.email  backend@iticket.io
 
-// @host      localhost:8081
+// @host      localhost:8082
 // @BasePath  /api/v1
 func main() {
 
+	// ---------- Logger ----------
 	logger := slog.New(
 		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 			Level: slog.LevelInfo,
@@ -39,18 +39,21 @@ func main() {
 	)
 	slog.SetDefault(logger)
 
-	// 1️⃣ Load config
+	// ---------- Load config ----------
 	cfg := config.Load()
 
 	if cfg.DBURL == "" {
 		log.Fatal("DATABASE_URL is required")
 	}
 
-	// 2️⃣ Initialize Postgres
+	// ---------- Initialize Postgres ----------
 	db, err := repository.NewPostgresDB(cfg.DBURL)
 	if err != nil {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
+
+	app.RunMigrations(db, "file://migrations")
+
 	defer func() {
 		slog.Info("closing database connection")
 		if err := db.Close(); err != nil {
@@ -58,28 +61,27 @@ func main() {
 		}
 	}()
 
-	// 3️⃣ Build dependencies
-	eventRepo := repository.NewPostgresEventRepository(db)
-	eventService := service.NewEventService(eventRepo)
-	eventHandler := handler.NewEventHandler(eventService)
+	// ---------- Build dependencies (Ticket domain) ----------
+	ticketRepo := repository.NewPostgresTicketRepository(db)
+	ticketService := service.NewTicketService(ticketRepo)
+	ticketHandler := handler.NewTicketHandler(ticketService)
+
 	readinessHandler := handler.NewReadinessHandler(db)
 
-	// 4️⃣ Setup router
-	router := setupRouter(eventHandler, readinessHandler)
-
-	log.Printf("Starting server on address = [%q]", ":"+cfg.Port)
+	// ---------- Setup router ----------
+	router := setupRouter(ticketHandler, readinessHandler)
 
 	server := &http.Server{
-		Addr:    ":" + cfg.Port, // MUST start with colon
+		Addr:    ":" + cfg.Port,
 		Handler: router,
 	}
 
 	application := app.New(server)
 	application.Run()
 
-	slog.Info("Event service started", "port", cfg.Port)
+	slog.Info("Ticket service started", "port", cfg.Port)
 
-	// 6️⃣ Graceful shutdown
+	// ---------- Graceful shutdown ----------
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
@@ -93,22 +95,22 @@ func main() {
 		log.Fatalf("graceful shutdown failed: %v", err)
 	}
 
-	log.Println("Event Service stopped")
+	log.Println("Ticket Service stopped")
 }
 
-func setupRouter(eventHandler *handler.EventHandler,
-	readinessHandler *handler.ReadinessHandler) http.Handler {
+func setupRouter(
+	ticketHandler *handler.TicketHandler,
+	readinessHandler *handler.ReadinessHandler,
+) http.Handler {
 
 	r := chi.NewRouter()
 
-	// middleware
+	// ---------- middleware ----------
 	r.Use(handler.RequestIDMiddleware)
 	r.Use(handler.RecoveryMiddleware)
 	r.Use(handler.LoggingMiddleware)
 
-	r.Get("/swagger/*", httpSwagger.WrapHandler)
-
-	// healthcheck
+	// ---------- health ----------
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
@@ -116,12 +118,11 @@ func setupRouter(eventHandler *handler.EventHandler,
 
 	r.Get("/ready", readinessHandler.Ready)
 
-	// api
+	// ---------- API ----------
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/events", eventHandler.GetEvents)
-		r.Post("/events", eventHandler.CreateEvent)
-		r.Put("/events/{id}", eventHandler.UpdateEvent)
-		r.Delete("/events/{id}", eventHandler.DeleteEvent)
+		r.Post("/tickets", ticketHandler.CreateTicket)
+		// GET /tickets?eventId=...  (we’ll add next)
+		r.Get("/tickets", ticketHandler.GetTickets)
 	})
 
 	return r

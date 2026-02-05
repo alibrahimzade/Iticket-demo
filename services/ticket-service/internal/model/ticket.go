@@ -7,7 +7,7 @@ type Ticket struct {
 	EventID   string
 	Zone      string
 	Price     float64
-	Curreny   string
+	Currency  string
 	Status    string
 	CreatedAt time.Time
 }
