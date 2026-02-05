@@ -81,3 +81,73 @@ func (r *PostgresTicketRepository) FindByEventID(
 	}
 	return tickets, nil
 }
+
+func (r *PostgresTicketRepository) Update(
+	ctx context.Context,
+	t model.Ticket,
+) (model.Ticket, error) {
+
+	query := `
+		UPDATE tickets
+		SET zone = $2,
+			price = $3,
+			currency = $4,
+			status = $5
+		WHERE id = $1
+		RETURNING id, event_id, zone, price, currency, status, created_at
+		`
+
+	var updated model.Ticket
+	err := r.db.QueryRowContext(
+		ctx,
+		query,
+		t.ID,
+		t.Zone,
+		t.Price,
+		t.Status,
+		t.Currency,
+	).Scan(
+		&updated.ID,
+		&updated.EventID,
+		&updated.Zone,
+		&updated.Price,
+		&updated.Currency,
+		&updated.Status,
+		&updated.CreatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return model.Ticket{}, ErrNotFound
+	}
+
+	if err != nil {
+		return model.Ticket{}, err
+	}
+
+	return updated, nil
+}
+
+func (r *PostgresTicketRepository) Reserve(
+	ctx context.Context,
+	id string,
+) (model.Ticket, error) {
+	query := `
+		UPDATE tickets
+		SET status = 'RESERVED'
+		WHERE id = $1 AND status = 'AVAILABLE'
+		RETURNING id, event_id, zone, price, currency, status`
+
+	var t model.Ticket
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&t.ID, &t.EventID, &t.Zone, &t.Price, &t.Currency, &t.Status)
+
+	if err == sql.ErrNoRows {
+		return model.Ticket{}, ErrInvalidState
+	}
+
+	if err != nil {
+		return model.Ticket{}, err
+	}
+
+	return t, nil
+}

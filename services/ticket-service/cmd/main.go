@@ -123,6 +123,8 @@ func setupRouter(
 		r.Post("/tickets", ticketHandler.CreateTicket)
 		// GET /tickets?eventId=...  (we’ll add next)
 		r.Get("/tickets", ticketHandler.GetTickets)
+		r.Put("/tickets/{id}", ticketHandler.UpdateTicket)
+		r.Post("/tickets/{id}/reserve", ticketHandler.ReserveTicket)
 	})
 
 	return r

@@ -5,6 +5,9 @@ import (
 	"net/http"
 	"ticket-service/internal/dto"
 	"ticket-service/internal/service"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type TicketHandler struct {
@@ -84,4 +87,71 @@ func (h *TicketHandler) GetTickets(w http.ResponseWriter, r *http.Request) {
 		"items": items,
 		"total": len(items),
 	})
+}
+
+func (h *TicketHandler) UpdateTicket(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	if _, err := uuid.Parse(id); err != nil {
+		respondError(
+			w,
+			r,
+			http.StatusBadRequest,
+			"INVALID_UUID",
+			"ticket id must be a valid UUID",
+			nil,
+		)
+		return
+	}
+	if id == "" {
+		respondError(w, r, http.StatusBadRequest, "INVALID_ID", "ticket id is required", nil)
+		return
+	}
+
+	var req dto.UpdateTicketRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, r, http.StatusBadRequest, "INVALID_JSON", "invalid request body", nil)
+		return
+	}
+
+	updated, err := h.service.UpdateTicket(
+		r.Context(),
+		id,
+		req.Zone,
+		req.Price,
+		req.Currency,
+		req.Status,
+	)
+
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err == service.ErrInvalidInput {
+			status = http.StatusBadRequest
+		}
+
+		respondError(w, r, status, "TICKET_UPDATE_FAILED", err.Error(), nil)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, dto.TicketResponse{
+		ID:       updated.ID,
+		EventID:  updated.EventID,
+		Zone:     updated.Zone,
+		Price:    updated.Price,
+		Currency: updated.Currency,
+		Status:   updated.Status,
+	})
+}
+
+func (h *TicketHandler) ReserveTicket(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	t, err := h.service.ReserveTicket(r.Context(), id)
+
+	if err != nil {
+		respondError(w, r, http.StatusConflict, "TICKET_NOT_AVAILABLE", err.Error(), nil)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, t)
 }

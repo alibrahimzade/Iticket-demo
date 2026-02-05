@@ -51,6 +51,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
+
+	app.RunMigrations(db, "file://migrations")
+	
 	defer func() {
 		slog.Info("closing database connection")
 		if err := db.Close(); err != nil {

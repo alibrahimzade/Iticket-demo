@@ -37,3 +37,32 @@ func (s *TicketService) GetTicketsByEvent(
 	ctx context.Context, eventID string) ([]model.Ticket, error) {
 	return s.repo.FindByEventID(ctx, eventID)
 }
+
+func (s *TicketService) UpdateTicket(
+	ctx context.Context,
+	id string,
+	zone string,
+	price float64,
+	currency string,
+	status string,
+) (model.Ticket, error) {
+
+	if id == "" || zone == "" || currency == "" || status == "" {
+		return model.Ticket{}, ErrInvalidInput
+	}
+
+	return s.repo.Update(ctx, model.Ticket{
+		ID:       id,
+		Zone:     zone,
+		Price:    price,
+		Currency: currency,
+		Status:   status,
+	})
+}
+
+func (s *TicketService) ReserveTicket(
+	ctx context.Context,
+	id string,
+) (model.Ticket, error) {
+	return s.repo.Reserve(ctx, id)
+}

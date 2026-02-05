@@ -10,4 +10,6 @@ type Ticket struct {
 	Currency  string
 	Status    string
 	CreatedAt time.Time
+	UpdatedAt time.Time
+	Version   int
 }
